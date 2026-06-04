@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Calendario">
+  <title>Calendario Personal</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <button class="icon-btn" id="prevMonth">&#8249;</button>
+    <div class="header-center">
+      <h1 id="monthTitle"></h1>
+      <button class="icon-btn today-btn" id="todayBtn">HOY</button>
+    </div>
+    <div style="display:flex;gap:4px;align-items:center">
+      <button class="icon-btn" id="nextMonth">&#8250;</button>
+      <button class="icon-btn" id="notifBtn" title="Recordatorios">🔔</button>
+    </div>
+  </header>
+
+  <!-- Calendar Card -->
+  <div class="calendar-card">
+    <div class="weekdays">
+      <span>Dom</span><span>Lun</span><span>Mar</span><span>Mié</span>
+      <span>Jue</span><span>Vie</span><span>Sáb</span>
+    </div>
+    <div class="calendar-grid" id="calendarGrid"></div>
+  </div>
+
+  <!-- Day Section -->
+  <div class="day-section">
+    <div class="day-section-header">
+      <span class="day-section-title" id="dayLabel"></span>
+      <span class="task-count-badge" id="taskBadge"></span>
+    </div>
+    <div class="tasks-list" id="tasksList"></div>
+  </div>
+
+  <!-- FAB -->
+  <button class="fab" id="addTaskBtn" title="Nueva tarea">+</button>
+
+  <!-- Task Modal -->
+  <div class="modal-overlay" id="taskModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2 id="modalTitle">Nueva Tarea</h2>
+        <button class="close-btn" id="closeTaskModal">✕</button>
+      </div>
+      <form id="taskForm" novalidate>
+        <input type="hidden" id="taskId">
+        <div class="form-body">
+          <div class="form-group">
+            <label for="taskTitle">Título *</label>
+            <input type="text" id="taskTitle" placeholder="¿Qué tienes que hacer?" autocomplete="off" required>
+          </div>
+          <div class="form-group">
+            <label for="taskDate">Fecha *</label>
+            <input type="date" id="taskDate" required>
+          </div>
+          <div class="form-group">
+            <label for="taskTime">Hora (opcional)</label>
+            <input type="time" id="taskTime">
+          </div>
+          <div class="form-group">
+            <label for="taskNotes">Notas</label>
+            <textarea id="taskNotes" placeholder="Detalles adicionales..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Prioridad</label>
+            <div class="priority-group">
+              <div class="priority-option" data-value="high">
+                <input type="radio" name="priority" value="high"> Alta
+              </div>
+              <div class="priority-option" data-value="medium">
+                <input type="radio" name="priority" value="medium" checked> Media
+              </div>
+              <div class="priority-option" data-value="low">
+                <input type="radio" name="priority" value="low"> Baja
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-danger" id="deleteBtn" style="display:none">Eliminar</button>
+          <button type="submit" class="btn-primary">Guardar tarea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notification Settings Modal -->
+  <div class="modal-overlay" id="notifModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2>Recordatorios</h2>
+        <button class="close-btn" id="closeNotifModal">✕</button>
+      </div>
+      <div class="notif-body">
+        <div class="notif-status-bar" id="notifStatusBar">
+          <span class="status-dot"></span>Comprobando...
+        </div>
+        <button class="btn-enable" id="enableNotifBtn">Activar notificaciones</button>
+        <div class="schedule-section">
+          <h3>Horarios automáticos</h3>
+          <div class="schedule-item">
+            <span class="schedule-icon">🌙</span>
+            <div class="schedule-info">
+              <strong>9:00 PM — cada noche</strong>
+              <p>Resumen de las tareas del día siguiente</p>
+            </div>
+          </div>
+          <div class="schedule-item">
+            <span class="schedule-icon">☀️</span>
+            <div class="schedule-info">
+              <strong>8:00 AM — cada mañana</strong>
+              <p>Lista completa de tareas del día de hoy</p>
+            </div>
+          </div>
+        </div>
+        <p class="notif-note">
+          💡 Para recibir notificaciones aunque el navegador esté cerrado,
+          instala esta app en tu pantalla de inicio (Compartir → Agregar a inicio).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-App Alert Banner -->
+  <div class="alert-banner hidden" id="alertBanner">
+    <div class="alert-inner">
+      <span class="alert-icon">🔔</span>
+      <div class="alert-text">
+        <strong id="alertTitle">Recordatorio</strong>
+        <p id="alertBody"></p>
+      </div>
+      <button class="alert-close" id="alertClose">✕</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
