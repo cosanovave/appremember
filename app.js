@@ -1,9 +1,14 @@
 // ─── State ────────────────────────────────────────────────────────────────────
-let viewDate = new Date();         // month displayed in calendar
-let selectedDate = new Date();     // day whose tasks are shown
+let viewDate = new Date();
+let selectedDate = new Date();
 let tasks = loadTasks();
+let clients = loadClients();
+let activeClientFilter = '';
 let notifTimeouts = [];
 let swRegistration = null;
+
+const CLIENT_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6',
+  '#ec4899','#14b8a6','#f97316','#3b82f6','#84cc16'];
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -13,6 +18,7 @@ const DAYS_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 document.addEventListener('DOMContentLoaded', () => {
   registerSW();
   renderCalendar();
+  renderFilterBar();
   renderDaySection();
   bindEvents();
   scheduleNotifications();
@@ -21,29 +27,50 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Service Worker ───────────────────────────────────────────────────────────
 async function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  try {
-    swRegistration = await navigator.serviceWorker.register('./sw.js');
-  } catch (e) {
-    console.warn('SW registration failed:', e);
-  }
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js'); }
+  catch (e) { console.warn('SW:', e); }
 }
 
 // ─── Data helpers ──────────────────────────────────────────────────────────────
 function loadTasks() {
   try { return JSON.parse(localStorage.getItem('tasks') || '[]'); } catch { return []; }
 }
-function saveTasks() {
-  localStorage.setItem('tasks', JSON.stringify(tasks));
+function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
+
+function loadClients() {
+  try { return JSON.parse(localStorage.getItem('clients') || '[]'); } catch { return []; }
 }
+function saveClients() { localStorage.setItem('clients', JSON.stringify(clients)); }
+
+function getClientById(id) { return clients.find(c => c.id === id); }
+
+function nextClientColor() {
+  const used = new Set(clients.map(c => c.color));
+  return CLIENT_COLORS.find(c => !used.has(c)) || CLIENT_COLORS[clients.length % CLIENT_COLORS.length];
+}
+
+function addClient(name) {
+  if (!name.trim()) return null;
+  const client = { id: Date.now().toString(), name: name.trim(), color: nextClientColor() };
+  clients.push(client);
+  saveClients();
+  return client;
+}
+
+function deleteClient(id) {
+  clients = clients.filter(c => c.id !== id);
+  tasks = tasks.filter(t => t.clientId !== id);
+  if (activeClientFilter === id) activeClientFilter = '';
+  saveClients();
+  saveTasks();
+  renderClientsList();
+  renderFilterBar();
+  renderCalendar();
+  renderDaySection();
+}
+
 function dateKey(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-function parseLocalDate(str) {
-  const [y, m, d] = str.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function formatDateLabel(d) {
   const today = dateKey(new Date());
@@ -56,9 +83,10 @@ function formatDateLabel(d) {
 function formatTime(t) {
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+  return `${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`;
+}
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────
@@ -70,35 +98,28 @@ function renderCalendar() {
   grid.innerHTML = '';
 
   const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
-  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth()+1, 0).getDate();
   const daysInPrev = new Date(viewDate.getFullYear(), viewDate.getMonth(), 0).getDate();
-
   const todayKey = dateKey(new Date());
   const selKey = dateKey(selectedDate);
+  const taskDates = new Set(tasks
+    .filter(t => !activeClientFilter || t.clientId === activeClientFilter)
+    .map(t => t.date));
 
-  // Collect which dates have tasks
-  const taskDates = new Set(tasks.map(t => t.date));
-
-  // Prev month overflow
   for (let i = 0; i < firstDay; i++) {
-    const day = daysInPrev - firstDay + 1 + i;
-    const d = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, day);
-    grid.appendChild(makeDayCell(day, d, taskDates, todayKey, selKey, true));
+    const d = new Date(viewDate.getFullYear(), viewDate.getMonth()-1, daysInPrev - firstDay + 1 + i);
+    grid.appendChild(makeDayCell(d, taskDates, todayKey, selKey, true));
   }
-  // Current month
   for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), d);
-    grid.appendChild(makeDayCell(d, date, taskDates, todayKey, selKey, false));
+    grid.appendChild(makeDayCell(new Date(viewDate.getFullYear(), viewDate.getMonth(), d), taskDates, todayKey, selKey, false));
   }
-  // Next month overflow
   const remaining = 42 - firstDay - daysInMonth;
   for (let i = 1; i <= remaining; i++) {
-    const date = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, i);
-    grid.appendChild(makeDayCell(i, date, taskDates, todayKey, selKey, true));
+    grid.appendChild(makeDayCell(new Date(viewDate.getFullYear(), viewDate.getMonth()+1, i), taskDates, todayKey, selKey, true));
   }
 }
 
-function makeDayCell(dayNum, date, taskDates, todayKey, selKey, isOther) {
+function makeDayCell(date, taskDates, todayKey, selKey, isOther) {
   const key = dateKey(date);
   const cell = document.createElement('div');
   cell.className = 'cal-day' +
@@ -110,46 +131,83 @@ function makeDayCell(dayNum, date, taskDates, todayKey, selKey, isOther) {
 
   const num = document.createElement('span');
   num.className = 'day-num';
-  num.textContent = dayNum;
+  num.textContent = date.getDate();
   cell.appendChild(num);
 
   const dotRow = document.createElement('div');
   dotRow.className = 'dot-row';
   if (taskDates.has(key)) {
-    const dayTasks = tasks.filter(t => t.date === key);
-    const dotsCount = Math.min(dayTasks.length, 3);
-    for (let i = 0; i < dotsCount; i++) {
+    const count = Math.min(tasks.filter(t => t.date === key &&
+      (!activeClientFilter || t.clientId === activeClientFilter)).length, 3);
+    for (let i = 0; i < count; i++) {
       const dot = document.createElement('span');
       dot.className = 'dot';
       dotRow.appendChild(dot);
     }
   }
   cell.appendChild(dotRow);
-
   cell.addEventListener('click', () => selectDay(date));
   return cell;
 }
 
 function selectDay(date) {
   selectedDate = date;
-  // If clicking a day in another month, navigate to that month
   if (date.getMonth() !== viewDate.getMonth() || date.getFullYear() !== viewDate.getFullYear()) {
     viewDate = new Date(date.getFullYear(), date.getMonth(), 1);
   }
   renderCalendar();
   renderDaySection();
-  document.getElementById('taskForm').dataset.defaultDate = dateKey(date);
+}
+
+// ─── Filter Bar ───────────────────────────────────────────────────────────────
+function renderFilterBar() {
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = '';
+
+  const allChip = makeFilterChip('Todos', '', activeClientFilter === '');
+  bar.appendChild(allChip);
+
+  clients.forEach(client => {
+    const chip = makeFilterChip(client.name, client.id, activeClientFilter === client.id, client.color);
+    bar.appendChild(chip);
+  });
+
+  const manageBtn = document.createElement('button');
+  manageBtn.className = 'filter-chip manage-chip';
+  manageBtn.textContent = '＋ Clientes';
+  manageBtn.addEventListener('click', openClientsModal);
+  bar.appendChild(manageBtn);
+}
+
+function makeFilterChip(label, clientId, isActive, color) {
+  const chip = document.createElement('button');
+  chip.className = 'filter-chip' + (isActive ? ' active' : '');
+  if (color && isActive) { chip.style.background = color; chip.style.borderColor = color; chip.style.color = '#fff'; }
+  else if (color) { chip.style.borderColor = color; chip.style.color = color; }
+  chip.textContent = label;
+  chip.addEventListener('click', () => {
+    activeClientFilter = clientId;
+    renderFilterBar();
+    renderCalendar();
+    renderDaySection();
+  });
+  return chip;
 }
 
 // ─── Day Section & Tasks ──────────────────────────────────────────────────────
 function renderDaySection() {
   document.getElementById('dayLabel').textContent = formatDateLabel(selectedDate);
-  const dayTasks = tasks
+
+  let dayTasks = tasks
     .filter(t => t.date === dateKey(selectedDate))
     .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 
-  const badge = document.getElementById('taskBadge');
+  if (activeClientFilter) {
+    dayTasks = dayTasks.filter(t => t.clientId === activeClientFilter);
+  }
+
   const pending = dayTasks.filter(t => !t.completed).length;
+  const badge = document.getElementById('taskBadge');
   badge.textContent = `${pending} pendiente${pending !== 1 ? 's' : ''}`;
   badge.className = 'task-count-badge' + (dayTasks.length ? ' visible' : '');
 
@@ -167,13 +225,15 @@ function renderDaySection() {
   }
 
   dayTasks.forEach(task => {
+    const client = task.clientId ? getClientById(task.clientId) : null;
     const card = document.createElement('div');
     card.className = `task-card priority-${task.priority}${task.completed ? ' completed' : ''} view-fade`;
+    if (client) card.style.borderLeftColor = client.color;
+
     card.innerHTML = `
-      <div class="task-check ${task.completed ? 'checked' : ''}" data-id="${task.id}">
-        ${task.completed ? '✓' : ''}
-      </div>
+      <div class="task-check ${task.completed ? 'checked' : ''}" data-id="${task.id}">${task.completed ? '✓' : ''}</div>
       <div class="task-body">
+        ${client ? `<span class="client-chip" style="background:${client.color}18;color:${client.color};border-color:${client.color}40">${escapeHtml(client.name)}</span>` : ''}
         <div class="task-title">${escapeHtml(task.title)}</div>
         <div class="task-meta">
           ${task.time ? `<span class="task-time">🕐 ${formatTime(task.time)}</span>` : ''}
@@ -184,10 +244,7 @@ function renderDaySection() {
         ${task.notes ? `<div class="task-notes">${escapeHtml(task.notes)}</div>` : ''}
       </div>`;
 
-    card.querySelector('.task-check').addEventListener('click', e => {
-      e.stopPropagation();
-      toggleTask(task.id);
-    });
+    card.querySelector('.task-check').addEventListener('click', e => { e.stopPropagation(); toggleTask(task.id); });
     card.addEventListener('click', () => openEditModal(task));
     list.appendChild(card);
   });
@@ -196,10 +253,6 @@ function renderDaySection() {
 function toggleTask(id) {
   const t = tasks.find(t => t.id === id);
   if (t) { t.completed = !t.completed; saveTasks(); renderCalendar(); renderDaySection(); }
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ─── Task Modal ───────────────────────────────────────────────────────────────
@@ -211,8 +264,11 @@ function openAddModal() {
   document.getElementById('taskTime').value = '';
   document.getElementById('taskNotes').value = '';
   document.getElementById('deleteBtn').style.display = 'none';
+  document.getElementById('newClientGroup').style.display = 'none';
   setPriority('medium');
+  populateClientSelect(activeClientFilter || '');
   openModal('taskModal');
+  setTimeout(() => document.getElementById('taskTitle').focus(), 300);
 }
 
 function openEditModal(task) {
@@ -223,22 +279,51 @@ function openEditModal(task) {
   document.getElementById('taskTime').value = task.time || '';
   document.getElementById('taskNotes').value = task.notes || '';
   document.getElementById('deleteBtn').style.display = 'block';
+  document.getElementById('newClientGroup').style.display = 'none';
   setPriority(task.priority || 'medium');
+  populateClientSelect(task.clientId || '');
   openModal('taskModal');
 }
 
-function setPriority(value) {
-  document.querySelectorAll('.priority-option').forEach(el => {
-    el.classList.remove('selected-high', 'selected-medium', 'selected-low');
-    if (el.dataset.value === value) el.classList.add(`selected-${value}`);
+function populateClientSelect(selectedClientId) {
+  const sel = document.getElementById('taskClient');
+  sel.innerHTML = '<option value="">Sin cliente (personal)</option>';
+  clients.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    if (c.id === selectedClientId) opt.selected = true;
+    sel.appendChild(opt);
   });
-  document.querySelector(`.priority-option[data-value="${value}"] input`).checked = true;
+  const newOpt = document.createElement('option');
+  newOpt.value = '__new__';
+  newOpt.textContent = '＋ Nuevo cliente...';
+  sel.appendChild(newOpt);
+  if (!selectedClientId) sel.value = '';
 }
+
+document.getElementById('taskClient').addEventListener('change', function() {
+  const newGroup = document.getElementById('newClientGroup');
+  newGroup.style.display = this.value === '__new__' ? 'block' : 'none';
+  if (this.value === '__new__') {
+    setTimeout(() => document.getElementById('newClientName').focus(), 100);
+  }
+});
 
 document.getElementById('taskForm').addEventListener('submit', e => {
   e.preventDefault();
   const id = document.getElementById('taskId').value;
   const priority = document.querySelector('input[name="priority"]:checked')?.value || 'medium';
+
+  let clientId = document.getElementById('taskClient').value;
+
+  if (clientId === '__new__') {
+    const name = document.getElementById('newClientName').value.trim();
+    if (!name) { document.getElementById('newClientName').focus(); return; }
+    const newClient = addClient(name);
+    clientId = newClient.id;
+    document.getElementById('newClientName').value = '';
+  }
 
   const taskData = {
     title: document.getElementById('taskTitle').value.trim(),
@@ -246,9 +331,9 @@ document.getElementById('taskForm').addEventListener('submit', e => {
     time: document.getElementById('taskTime').value,
     notes: document.getElementById('taskNotes').value.trim(),
     priority,
-    completed: false
+    clientId,
+    completed: false,
   };
-
   if (!taskData.title || !taskData.date) return;
 
   if (id) {
@@ -259,6 +344,7 @@ document.getElementById('taskForm').addEventListener('submit', e => {
   }
 
   saveTasks();
+  renderFilterBar();
   renderCalendar();
   renderDaySection();
   closeModal('taskModal');
@@ -269,9 +355,66 @@ document.getElementById('deleteBtn').addEventListener('click', () => {
   if (!id) return;
   tasks = tasks.filter(t => t.id !== id);
   saveTasks();
+  renderFilterBar();
   renderCalendar();
   renderDaySection();
   closeModal('taskModal');
+});
+
+function setPriority(value) {
+  document.querySelectorAll('.priority-option').forEach(el => {
+    el.classList.remove('selected-high','selected-medium','selected-low');
+    if (el.dataset.value === value) el.classList.add(`selected-${value}`);
+  });
+  const radio = document.querySelector(`.priority-option[data-value="${value}"] input`);
+  if (radio) radio.checked = true;
+}
+
+// ─── Clients Modal ────────────────────────────────────────────────────────────
+function openClientsModal() {
+  renderClientsList();
+  openModal('clientsModal');
+}
+
+function renderClientsList() {
+  const list = document.getElementById('clientsList');
+  list.innerHTML = '';
+
+  if (clients.length === 0) {
+    list.innerHTML = '<p class="no-clients-msg">Aún no tienes clientes</p>';
+    return;
+  }
+
+  clients.forEach(client => {
+    const count = tasks.filter(t => t.clientId === client.id).length;
+    const item = document.createElement('div');
+    item.className = 'client-item';
+    item.innerHTML = `
+      <span class="client-dot" style="background:${client.color}"></span>
+      <span class="client-name">${escapeHtml(client.name)}</span>
+      <span class="client-task-count">${count} tarea${count !== 1 ? 's' : ''}</span>
+      <button class="client-delete-btn" data-id="${client.id}" title="Eliminar cliente">✕</button>`;
+    item.querySelector('.client-delete-btn').addEventListener('click', () => {
+      if (confirm(`¿Eliminar cliente "${client.name}"? Se eliminarán también todas sus tareas.`)) {
+        deleteClient(client.id);
+      }
+    });
+    list.appendChild(item);
+  });
+}
+
+document.getElementById('addClientBtn').addEventListener('click', () => {
+  const input = document.getElementById('newClientInput');
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  addClient(name);
+  input.value = '';
+  renderClientsList();
+  renderFilterBar();
+});
+
+document.getElementById('newClientInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('addClientBtn').click(); }
 });
 
 // ─── Notification Modal ───────────────────────────────────────────────────────
@@ -283,90 +426,71 @@ function openNotifModal() {
 function updateNotifStatus() {
   const bar = document.getElementById('notifStatusBar');
   const btn = document.getElementById('enableNotifBtn');
-
   if (!('Notification' in window)) {
     bar.className = 'notif-status-bar denied';
-    bar.innerHTML = '<span class="status-dot"></span>Notificaciones no disponibles en este navegador';
-    btn.disabled = true;
-    return;
+    bar.innerHTML = '<span class="status-dot"></span>No disponible en este navegador';
+    btn.disabled = true; return;
   }
-
   const perm = Notification.permission;
   if (perm === 'granted') {
     bar.className = 'notif-status-bar granted';
     bar.innerHTML = '<span class="status-dot"></span>Notificaciones activadas ✓';
-    btn.textContent = 'Activadas';
-    btn.disabled = true;
+    btn.textContent = 'Activadas'; btn.disabled = true;
   } else if (perm === 'denied') {
     bar.className = 'notif-status-bar denied';
-    bar.innerHTML = '<span class="status-dot"></span>Bloqueadas — actívalas en Ajustes del navegador';
+    bar.innerHTML = '<span class="status-dot"></span>Bloqueadas — actívalas en Ajustes';
     btn.disabled = true;
   } else {
     bar.className = 'notif-status-bar default';
     bar.innerHTML = '<span class="status-dot"></span>Notificaciones no activadas';
-    btn.textContent = 'Activar notificaciones';
-    btn.disabled = false;
+    btn.textContent = 'Activar notificaciones'; btn.disabled = false;
   }
 }
 
 document.getElementById('enableNotifBtn').addEventListener('click', async () => {
-  if (!('Notification' in window)) return;
   const perm = await Notification.requestPermission();
   updateNotifStatus();
-  if (perm === 'granted') {
-    scheduleNotifications();
-    playChime();
-  }
+  if (perm === 'granted') { scheduleNotifications(); playChime(); }
 });
 
 // ─── Notification Scheduling ──────────────────────────────────────────────────
 function scheduleNotifications() {
   notifTimeouts.forEach(clearTimeout);
   notifTimeouts = [];
-
   const now = new Date();
 
-  // 9 PM tonight → remind about tomorrow's tasks
   const tonight9pm = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 21, 0, 0);
   if (tonight9pm <= now) tonight9pm.setDate(tonight9pm.getDate() + 1);
   notifTimeouts.push(setTimeout(() => { fireEveningReminder(); scheduleNotifications(); }, tonight9pm - now));
 
-  // 8 AM → remind about today's tasks
   const next8am = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
   if (next8am <= now) next8am.setDate(next8am.getDate() + 1);
   notifTimeouts.push(setTimeout(() => { fireMorningReminder(); scheduleNotifications(); }, next8am - now));
 }
 
 function fireEveningReminder() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const key = dateKey(tomorrow);
-  const pending = tasks.filter(t => t.date === key && !t.completed);
-  if (pending.length === 0) return;
-
-  const count = pending.length;
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const pending = tasks.filter(t => t.date === dateKey(tomorrow) && !t.completed);
+  if (!pending.length) return;
   const title = '🌙 Recordatorio — Mañana';
-  const body = `Tienes ${count} tarea${count > 1 ? 's' : ''} mañana:\n` +
-    pending.slice(0, 3).map(t => `• ${t.title}${t.time ? ' a las ' + formatTime(t.time) : ''}`).join('\n');
-
-  playChime();
-  showInAppAlert(title, body);
-  sendSystemNotif(title, body, 'evening');
+  const body = `${pending.length} tarea${pending.length>1?'s':''} mañana:\n` +
+    pending.slice(0,3).map(t => {
+      const c = t.clientId ? getClientById(t.clientId) : null;
+      return `• ${t.title}${c ? ` [${c.name}]` : ''}${t.time ? ' a las '+formatTime(t.time) : ''}`;
+    }).join('\n');
+  playChime(); showInAppAlert(title, body); sendSystemNotif(title, body, 'evening');
 }
 
 function fireMorningReminder() {
-  const key = dateKey(new Date());
-  const pending = tasks.filter(t => t.date === key && !t.completed);
-  if (pending.length === 0) return;
-
-  const count = pending.length;
+  const pending = tasks.filter(t => t.date === dateKey(new Date()) && !t.completed);
+  if (!pending.length) return;
   const title = '☀️ Tareas de hoy';
-  const body = `Tienes ${count} tarea${count > 1 ? 's' : ''} hoy:\n` +
-    pending.slice(0, 3).map(t => `• ${t.title}${t.time ? ' a las ' + formatTime(t.time) : ''}`).join('\n');
-
-  playChime();
-  showInAppAlert(title, body);
-  sendSystemNotif(title, body, 'morning');
+  const body = `${pending.length} tarea${pending.length>1?'s':''} hoy:\n` +
+    pending.slice(0,3).map(t => {
+      const c = t.clientId ? getClientById(t.clientId) : null;
+      return `• ${t.title}${c ? ` [${c.name}]` : ''}${t.time ? ' a las '+formatTime(t.time) : ''}`;
+    }).join('\n');
+  playChime(); showInAppAlert(title, body); sendSystemNotif(title, body, 'morning');
 }
 
 async function sendSystemNotif(title, body, tag) {
@@ -381,79 +505,50 @@ async function sendSystemNotif(title, body, tag) {
 // ─── In-App Alert ─────────────────────────────────────────────────────────────
 let alertTimer = null;
 function showInAppAlert(title, body) {
-  const banner = document.getElementById('alertBanner');
   document.getElementById('alertTitle').textContent = title;
   document.getElementById('alertBody').textContent = body;
-  banner.classList.remove('hidden');
+  document.getElementById('alertBanner').classList.remove('hidden');
   if (alertTimer) clearTimeout(alertTimer);
-  alertTimer = setTimeout(() => banner.classList.add('hidden'), 8000);
+  alertTimer = setTimeout(() => document.getElementById('alertBanner').classList.add('hidden'), 8000);
 }
-document.getElementById('alertClose').addEventListener('click', () => {
-  document.getElementById('alertBanner').classList.add('hidden');
-});
+document.getElementById('alertClose').addEventListener('click', () =>
+  document.getElementById('alertBanner').classList.add('hidden'));
 
 // ─── Sound ────────────────────────────────────────────────────────────────────
 function playChime() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [880, 1100, 1320];
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.15);
-      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + i * 0.15 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.4);
-      osc.start(ctx.currentTime + i * 0.15);
-      osc.stop(ctx.currentTime + i * 0.15 + 0.4);
+    [880, 1100, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, ctx.currentTime + i*0.15);
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime + i*0.15 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.15 + 0.4);
+      osc.start(ctx.currentTime + i*0.15); osc.stop(ctx.currentTime + i*0.15 + 0.4);
     });
-  } catch (e) { /* audio not available */ }
+  } catch (e) {}
 }
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
-function openModal(id) {
-  document.getElementById(id).classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
-  document.body.style.overflow = '';
-}
+function openModal(id) { document.getElementById(id).classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
 
 // ─── Event Bindings ───────────────────────────────────────────────────────────
 function bindEvents() {
-  document.getElementById('prevMonth').addEventListener('click', () => {
-    viewDate.setMonth(viewDate.getMonth() - 1);
-    renderCalendar();
-  });
-  document.getElementById('nextMonth').addEventListener('click', () => {
-    viewDate.setMonth(viewDate.getMonth() + 1);
-    renderCalendar();
-  });
-  document.getElementById('todayBtn').addEventListener('click', () => {
-    viewDate = new Date();
-    selectedDate = new Date();
-    renderCalendar();
-    renderDaySection();
-  });
-
+  document.getElementById('prevMonth').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()-1); renderCalendar(); });
+  document.getElementById('nextMonth').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()+1); renderCalendar(); });
+  document.getElementById('todayBtn').addEventListener('click', () => { viewDate = new Date(); selectedDate = new Date(); renderCalendar(); renderDaySection(); });
   document.getElementById('addTaskBtn').addEventListener('click', openAddModal);
   document.getElementById('notifBtn').addEventListener('click', openNotifModal);
-
   document.getElementById('closeTaskModal').addEventListener('click', () => closeModal('taskModal'));
   document.getElementById('closeNotifModal').addEventListener('click', () => closeModal('notifModal'));
+  document.getElementById('closeClientsModal').addEventListener('click', () => closeModal('clientsModal'));
 
-  // Close modal on overlay click
-  ['taskModal', 'notifModal'].forEach(id => {
-    document.getElementById(id).addEventListener('click', e => {
-      if (e.target.id === id) closeModal(id);
-    });
+  ['taskModal','notifModal','clientsModal'].forEach(id => {
+    document.getElementById(id).addEventListener('click', e => { if (e.target.id === id) closeModal(id); });
   });
 
-  // Priority selector
   document.querySelectorAll('.priority-option').forEach(el => {
     el.addEventListener('click', () => setPriority(el.dataset.value));
   });

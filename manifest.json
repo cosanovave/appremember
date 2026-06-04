@@ -1,6 +1,6 @@
 {
-  "name": "Calendario Personal",
-  "short_name": "Calendario",
+  "name": "NOVATECH Remember",
+  "short_name": "NOVATECH Remember",
   "description": "Tu calendario personal con recordatorios diarios",
   "start_url": "./index.html",
   "display": "standalone",

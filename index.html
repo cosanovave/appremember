@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#6366f1">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Calendario">
-  <title>Calendario Personal</title>
+  <meta name="apple-mobile-web-app-title" content="NOVATECH Remember">
+  <title>NOVATECH Remember</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="styles.css">
@@ -35,6 +35,9 @@
     </div>
     <div class="calendar-grid" id="calendarGrid"></div>
   </div>
+
+  <!-- Client Filter Bar -->
+  <div class="filter-bar" id="filterBar"></div>
 
   <!-- Day Section -->
   <div class="day-section">
@@ -68,6 +71,16 @@
             <input type="date" id="taskDate" required>
           </div>
           <div class="form-group">
+            <label for="taskClient">Cliente</label>
+            <select id="taskClient">
+              <option value="">Sin cliente (personal)</option>
+            </select>
+          </div>
+          <div class="form-group" id="newClientGroup" style="display:none">
+            <label for="newClientName">Nombre del nuevo cliente *</label>
+            <input type="text" id="newClientName" placeholder="Ej: ALEJANDRA, CAMPOTACO...">
+          </div>
+          <div class="form-group">
             <label for="taskTime">Hora (opcional)</label>
             <input type="time" id="taskTime">
           </div>
@@ -95,6 +108,24 @@
           <button type="submit" class="btn-primary">Guardar tarea</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Clients Modal -->
+  <div class="modal-overlay" id="clientsModal">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <h2>Clientes</h2>
+        <button class="close-btn" id="closeClientsModal">✕</button>
+      </div>
+      <div class="clients-body">
+        <div class="clients-list" id="clientsList"></div>
+        <div class="add-client-row">
+          <input type="text" id="newClientInput" placeholder="Nombre del nuevo cliente...">
+          <button class="btn-add-client" id="addClientBtn">Agregar</button>
+        </div>
+      </div>
     </div>
   </div>
 
