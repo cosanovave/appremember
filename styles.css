@@ -484,6 +484,21 @@ body {
 }
 .form-group select:focus { border-color: var(--primary); background-color: white; }
 
+/* NEW CLIENT BUTTON */
+.btn-new-client {
+  display: inline-block;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.btn-new-client:active { opacity: 0.6; }
+
 /* CLIENTS MODAL */
 .clients-body { padding: 16px 20px 24px; }
 .no-clients-msg { text-align: center; color: var(--text-muted); font-size: 14px; padding: 20px 0; }

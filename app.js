@@ -295,19 +295,14 @@ function populateClientSelect(selectedClientId) {
     if (c.id === selectedClientId) opt.selected = true;
     sel.appendChild(opt);
   });
-  const newOpt = document.createElement('option');
-  newOpt.value = '__new__';
-  newOpt.textContent = '＋ Nuevo cliente...';
-  sel.appendChild(newOpt);
   if (!selectedClientId) sel.value = '';
 }
 
-document.getElementById('taskClient').addEventListener('change', function() {
-  const newGroup = document.getElementById('newClientGroup');
-  newGroup.style.display = this.value === '__new__' ? 'block' : 'none';
-  if (this.value === '__new__') {
-    setTimeout(() => document.getElementById('newClientName').focus(), 100);
-  }
+document.getElementById('showNewClientBtn').addEventListener('click', () => {
+  const group = document.getElementById('newClientGroup');
+  const isVisible = group.style.display !== 'none';
+  group.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) setTimeout(() => document.getElementById('newClientName').focus(), 100);
 });
 
 document.getElementById('taskForm').addEventListener('submit', e => {
@@ -317,12 +312,14 @@ document.getElementById('taskForm').addEventListener('submit', e => {
 
   let clientId = document.getElementById('taskClient').value;
 
-  if (clientId === '__new__') {
+  const newClientGroup = document.getElementById('newClientGroup');
+  if (newClientGroup.style.display !== 'none') {
     const name = document.getElementById('newClientName').value.trim();
     if (!name) { document.getElementById('newClientName').focus(); return; }
     const newClient = addClient(name);
     clientId = newClient.id;
     document.getElementById('newClientName').value = '';
+    newClientGroup.style.display = 'none';
   }
 
   const taskData = {
